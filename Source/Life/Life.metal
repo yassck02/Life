@@ -11,6 +11,11 @@
 
 using namespace metal;
 
+struct FragmentUniforms {
+    float4 inactiveColor;
+    float4 activeColor;
+};
+
 struct Vertex {
     float4 position [[position]];
     float2 uv;
@@ -24,20 +29,25 @@ vertex Vertex vertex_shader(constant float4 *vertices [[ buffer(0) ]],
     };
 }
 
-fragment float4 fragment_shader(Vertex vtx [[stage_in]],
-                                texture2d<uint> generation [[texture(0)]])
+fragment float4 fragment_shader(Vertex vtx [[ stage_in ]],
+                                texture2d<uint> texture [[ texture(0) ]],
+                                const device FragmentUniforms &uniforms [[ buffer(0) ]])
 {
     constexpr sampler smplr(coord::normalized,
                             address::clamp_to_zero,
                             filter::nearest);
     
-    uint cell = generation.sample(smplr, vtx.uv).r;
-    return float4(cell);
+    uint cell = texture.sample(smplr, vtx.uv).r;
+    if (cell == 0) {
+        return uniforms.inactiveColor;
+    } else {
+        return uniforms.activeColor;
+    }
 }
 
-kernel void compute_function(texture2d<uint, access::read> current [[texture(0)]],
-                             texture2d<uint, access::write> next [[texture(1)]],
-                             uint2 index [[thread_position_in_grid]])
+kernel void compute_function(texture2d<uint, access::read> current [[ texture(0) ]],
+                             texture2d<uint, access::write> next [[ texture(1) ]],
+                             uint2 index [[ thread_position_in_grid ]])
 {
     short live_neighbours = 0;
     
@@ -52,7 +62,7 @@ kernel void compute_function(texture2d<uint, access::read> current [[texture(0)]
         }
     }
     
-    bool is_alive = 1 == current.read(index).r;
+    bool is_alive = (1 == current.read(index).r);
     
     if (is_alive) {
         if (live_neighbours < 2) {
